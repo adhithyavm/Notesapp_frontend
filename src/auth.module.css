@@ -139,8 +139,8 @@
 }
 
 .featureItem:nth-child(1) { animation-delay: 0.1s; }
-.featureItem:nth-child(2) { animation-delay: 0.2s; }
-.featureItem:nth-child(3) { animation-delay: 0.3s; }
+.featureItem:nth-child(2) { animation-delay: 0.3s; }
+.featureItem:nth-child(3) { animation-delay: 0.5s; }
 
 @keyframes slideInLeft {
   from {
@@ -449,6 +449,7 @@
 }
 
 .switchMode {
+  margin-top: 10px;
   text-align: center;
   color: #6b7280;
   font-size: 0.875rem;

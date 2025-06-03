@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import styles from './App.module.css';
-import { PlusCircle, Trash2, Image, Search, AlertTriangle, LogOut, X } from 'lucide-react'; // Added X icon for close button
+import { PlusCircle, Trash2, Image, Search, AlertTriangle, LogOut, X } from 'lucide-react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 
@@ -9,75 +9,163 @@ function Notespage() {
   const [activeNote, setActiveNote] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [error, setError] = useState('');
-  const [tempNoteData, setTempNoteData] = useState({});
+  
+  // Separate local editing state from server state
+  const [localTitle, setLocalTitle] = useState('');
+  const [localContent, setLocalContent] = useState('');
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  
   const [deletingImages, setDeletingImages] = useState(new Set());
-  const [selectedImage, setSelectedImage] = useState(null); // State for selected image
-  const debounceRef = useRef(null);
+  const [selectedImage, setSelectedImage] = useState(null);
+  
+  // Refs for performance optimization
+  const saveTimeoutRef = useRef(null);
   const isDeletingRef = useRef(false);
+  const isUpdatingFromServer = useRef(false);
+  const lastSavedState = useRef({ title: '', content: '' });
+  
   const navigate = useNavigate();
 
-  // Logout function
-  function handleLogout() {
+  // Memoized callbacks to prevent unnecessary re-renders
+  const handleLogout = useCallback(() => {
     localStorage.removeItem('token');
     navigate('/');
-  }
+  }, [navigate]);
 
-  // Handle image click to open modal
-  function handleImageClick(image) {
+  const handleImageClick = useCallback((image) => {
     setSelectedImage(image);
-  }
+  }, []);
 
-  // Handle closing the modal
-  function handleCloseModal() {
+  const handleCloseModal = useCallback(() => {
     setSelectedImage(null);
-  }
+  }, []);
 
-  // Handle Escape key to close modal
+  // Optimized search with useMemo
+  const filteredNotes = useMemo(() => {
+    if (!searchTerm.trim()) return notes;
+    const lowerSearchTerm = searchTerm.toLowerCase();
+    return notes.filter(note =>
+      note.title.toLowerCase().includes(lowerSearchTerm) ||
+      note.content.toLowerCase().includes(lowerSearchTerm)
+    );
+  }, [notes, searchTerm]);
+
+  // Get current note with memoization
+  const currentNote = useMemo(() => 
+    notes.find(note => note._id === activeNote), 
+    [notes, activeNote]
+  );
+
+  // Handle Escape key for modal
   useEffect(() => {
-    function handleKeyDown(event) {
+    const handleKeyDown = (event) => {
       if (event.key === 'Escape' && selectedImage) {
         handleCloseModal();
       }
+    };
+    
+    if (selectedImage) {
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
     }
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedImage]);
+  }, [selectedImage, handleCloseModal]);
 
+  // Initial data fetch
   useEffect(() => {
     fetchNotes();
   }, []);
 
+  // Only sync local state when switching notes or on initial load
   useEffect(() => {
-    if (activeNote) {
-      const currentNote = notes.find(note => note._id === activeNote);
-      setTempNoteData({
-        title: currentNote?.title || '',
-        content: currentNote?.content || '',
-      });
-    }
-  }, [activeNote, notes]);
-
-  useEffect(() => {
-    if (!activeNote) return;
-
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-    }
-
-    debounceRef.current = setTimeout(() => {
-      if (!isDeletingRef.current) {
-        updateNote(activeNote, tempNoteData);
+    if (activeNote && currentNote && !isUpdatingFromServer.current) {
+      const newTitle = currentNote.title || '';
+      const newContent = currentNote.content || '';
+      
+      // Only update if we're switching to a different note or initial load
+      if (lastSavedState.current.title !== newTitle || lastSavedState.current.content !== newContent) {
+        setLocalTitle(newTitle);
+        setLocalContent(newContent);
+        setHasUnsavedChanges(false);
+        lastSavedState.current = { title: newTitle, content: newContent };
       }
-    }, 500);
+    } else if (!activeNote) {
+      setLocalTitle('');
+      setLocalContent('');
+      setHasUnsavedChanges(false);
+      lastSavedState.current = { title: '', content: '' };
+    }
+  }, [activeNote]); // Remove currentNote from dependencies to prevent loops
+
+  // Detect changes and manage auto-save
+  useEffect(() => {
+    if (!activeNote || !currentNote) return;
+
+    // Check if there are actual changes from the last saved state
+    const titleChanged = localTitle !== lastSavedState.current.title;
+    const contentChanged = localContent !== lastSavedState.current.content;
+    
+    if (!titleChanged && !contentChanged) {
+      setHasUnsavedChanges(false);
+      return;
+    }
+
+    setHasUnsavedChanges(true);
+
+    // Clear existing timeout
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    // Set debounced save
+    saveTimeoutRef.current = setTimeout(() => {
+      if (!isDeletingRef.current && (titleChanged || contentChanged)) {
+        performSave();
+      }
+    }, 2000);
 
     return () => {
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
       }
     };
-  }, [tempNoteData, activeNote]);
+  }, [localTitle, localContent, activeNote]);
 
-  async function fetchNotes() {
+  // Perform save operation
+  const performSave = useCallback(async () => {
+    if (!activeNote) return;
+
+    try {
+      isUpdatingFromServer.current = true;
+      await updateNote(activeNote, {
+        title: localTitle,
+        content: localContent,
+      });
+      
+      // Update last saved state
+      lastSavedState.current = { title: localTitle, content: localContent };
+      setHasUnsavedChanges(false);
+    } catch (error) {
+      console.error('Save failed:', error);
+    } finally {
+      isUpdatingFromServer.current = false;
+    }
+  }, [activeNote, localTitle, localContent]);
+
+  // Save on component unmount or note change
+  useEffect(() => {
+    return () => {
+      if (hasUnsavedChanges && activeNote && saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+        // Immediate save on unmount (fire and forget)
+        updateNote(activeNote, {
+          title: localTitle,
+          content: localContent,
+        }).catch(console.error);
+      }
+    };
+  }, []);
+
+  const fetchNotes = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
       if (!token) return navigate('/login');
@@ -94,9 +182,9 @@ function Notespage() {
         navigate('/login');
       }
     }
-  }
+  }, [navigate]);
 
-  async function addNote() {
+  const addNote = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
       if (!token) return navigate('/login');
@@ -111,15 +199,15 @@ function Notespage() {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      setNotes([...notes, response.data]);
+      setNotes(prev => [...prev, response.data]);
       setActiveNote(response.data._id);
     } catch (err) {
       console.error('Add note error:', err);
       setError(err.response?.data?.error || 'Failed to create note');
     }
-  }
+  }, [navigate]);
 
-  async function deleteNote(id) {
+  const deleteNote = useCallback(async (id) => {
     try {
       const token = localStorage.getItem('token');
       if (!token) return navigate('/login');
@@ -128,15 +216,21 @@ function Notespage() {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      setNotes(notes.filter(note => note._id !== id));
-      if (activeNote === id) setActiveNote(null);
+      setNotes(prev => prev.filter(note => note._id !== id));
+      if (activeNote === id) {
+        setActiveNote(null);
+        setLocalTitle('');
+        setLocalContent('');
+        setHasUnsavedChanges(false);
+        lastSavedState.current = { title: '', content: '' };
+      }
     } catch (err) {
       console.error('Delete note error:', err);
       setError(err.response?.data?.error || 'Failed to delete note');
     }
-  }
+  }, [navigate, activeNote]);
 
-  async function updateNote(id, updates) {
+  const updateNote = useCallback(async (id, updates) => {
     try {
       const token = localStorage.getItem('token');
       if (!token) return navigate('/login');
@@ -145,14 +239,23 @@ function Notespage() {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      setNotes(prevNotes => prevNotes.map(note => (note._id === id ? response.data : note)));
+      // Update notes state without triggering local state changes
+      setNotes(prevNotes => prevNotes.map(note => {
+        if (note._id === id) {
+          return response.data;
+        }
+        return note;
+      }));
+
+      return response.data;
     } catch (err) {
       console.error('Update note error:', err);
       setError(err.response?.data?.error || 'Failed to update note');
+      throw err;
     }
-  }
+  }, [navigate]);
 
-  async function addImage(id) {
+  const addImage = useCallback(async (id) => {
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
     fileInput.accept = 'image/*';
@@ -183,9 +286,9 @@ function Notespage() {
     });
 
     fileInput.click();
-  }
+  }, [navigate]);
 
-  async function deleteImage(noteId, publicId) {
+  const deleteImage = useCallback(async (noteId, publicId) => {
     if (isDeletingRef.current) return;
     isDeletingRef.current = true;
 
@@ -198,6 +301,7 @@ function Notespage() {
 
       setDeletingImages(prev => new Set([...prev, publicId]));
 
+      // Optimistic update
       setNotes(prevNotes => prevNotes.map(note => {
         if (note._id === noteId) {
           return {
@@ -213,16 +317,11 @@ function Notespage() {
       });
 
       setNotes(prevNotes => prevNotes.map(note => (note._id === noteId ? response.data : note)));
-
-      setDeletingImages(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(publicId);
-        return newSet;
-      });
     } catch (err) {
       console.error('Delete image error:', err);
       setError(err.response?.data?.error || 'Failed to delete image');
 
+      // Revert optimistic update on error
       try {
         const token = localStorage.getItem('token');
         if (!token) {
@@ -237,23 +336,41 @@ function Notespage() {
         console.error('Fetch single note error:', fetchErr);
         setError('Failed to refresh note after image deletion');
       }
-
+    } finally {
       setDeletingImages(prev => {
         const newSet = new Set(prev);
         newSet.delete(publicId);
         return newSet;
       });
-    } finally {
       isDeletingRef.current = false;
     }
-  }
+  }, [navigate]);
 
-  const filteredNotes = notes.filter(note =>
-    note.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    note.content.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Optimized input handlers - these should NOT cause re-renders or state conflicts
+  const handleTitleChange = useCallback((e) => {
+    setLocalTitle(e.target.value);
+  }, []);
 
-  const currentNote = notes.find(note => note._id === activeNote);
+  const handleContentChange = useCallback((e) => {
+    setLocalContent(e.target.value);
+  }, []);
+
+  const handleSearchChange = useCallback((e) => {
+    setSearchTerm(e.target.value);
+  }, []);
+
+  const handleNoteSelect = useCallback(async (noteId) => {
+    // Save current note before switching if there are unsaved changes
+    if (hasUnsavedChanges && activeNote && saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      try {
+        await performSave();
+      } catch (error) {
+        console.error('Failed to save before switching notes:', error);
+      }
+    }
+    setActiveNote(noteId);
+  }, [hasUnsavedChanges, activeNote, performSave]);
 
   function getRandomColor() {
     const colors = ['#FFD4DE', '#FFECB8', '#E2F9B8', '#A1E5EE', '#D4BBFF', '#FFD4B8', '#CCFFD9'];
@@ -291,7 +408,7 @@ function Notespage() {
             placeholder="Search notes..."
             className={styles.searchInput}
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={handleSearchChange}
           />
         </div>
 
@@ -302,41 +419,14 @@ function Notespage() {
             </div>
           ) : (
             filteredNotes.map(note => (
-              <div
+              <NoteItem
                 key={note._id}
-                className={`${styles.noteItem} ${activeNote === note._id ? styles.active : ''}`}
-                style={{ backgroundColor: note.color }}
-                onClick={() => setActiveNote(note._id)}
-              >
-                <div className={styles.noteItemContent}>
-                  <h3 className={styles.noteTitle}>{note.title}</h3>
-                  <p className={styles.notePreview}>
-                    {note.content.substring(0, 60) + (note.content.length > 60 ? '...' : '')}
-                  </p>
-                  <div className={styles.noteFooter}>
-                    <span className={styles.noteDate}>
-                      {new Date(note.createdAt).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                      })}
-                    </span>
-                    {note.images.length > 0 && (
-                      <span className={styles.imageCount}>
-                        <Image size={12} /> {note.images.length}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <button
-                  className={styles.deleteButton}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    deleteNote(note._id);
-                  }}
-                >
-                  <Trash2 size={16} />
-                </button>
-              </div>
+                note={note}
+                isActive={activeNote === note._id}
+                onSelect={handleNoteSelect}
+                onDelete={deleteNote}
+                hasUnsavedChanges={hasUnsavedChanges && activeNote === note._id}
+              />
             ))
           )}
         </div>
@@ -356,13 +446,18 @@ function Notespage() {
           </div>
         ) : (
           <div className={styles.noteEditor}>
-            <input
-              type="text"
-              className={styles.titleInput}
-              value={tempNoteData.title || ''}
-              onChange={(e) => setTempNoteData({ ...tempNoteData, title: e.target.value })}
-              placeholder="Note Title"
-            />
+            <div className={styles.editorHeader}>
+              <input
+                type="text"
+                className={styles.titleInput}
+                value={localTitle}
+                onChange={handleTitleChange}
+                placeholder="Note Title"
+              />
+              {hasUnsavedChanges && (
+                <span className={styles.unsavedIndicator}>●</span>
+              )}
+            </div>
 
             <div className={styles.editorActions}>
               <button className={styles.imageButton} onClick={() => addImage(activeNote)}>
@@ -373,8 +468,8 @@ function Notespage() {
 
             <textarea
               className={styles.contentInput}
-              value={tempNoteData.content || ''}
-              onChange={(e) => setTempNoteData({ ...tempNoteData, content: e.target.value })}
+              value={localContent}
+              onChange={handleContentChange}
               placeholder="Start typing your note..."
             />
 
@@ -386,7 +481,10 @@ function Notespage() {
                       src={image.url}
                       alt={`Note attachment ${index + 1}`}
                       className={styles.noteImage}
-                      style={{ opacity: deletingImages.has(image.public_id) ? 0.5 : 1, cursor: 'pointer' }}
+                      style={{ 
+                        opacity: deletingImages.has(image.public_id) ? 0.5 : 1, 
+                        cursor: 'pointer' 
+                      }}
                       onClick={() => handleImageClick(image)}
                     />
                     <button
@@ -421,5 +519,46 @@ function Notespage() {
     </div>
   );
 }
+
+// Memoized NoteItem component to prevent unnecessary re-renders
+const NoteItem = React.memo(({ note, isActive, onSelect, onDelete, hasUnsavedChanges }) => (
+  <div
+    className={`${styles.noteItem} ${isActive ? styles.active : ''}`}
+    style={{ backgroundColor: note.color }}
+    onClick={() => onSelect(note._id)}
+  >
+    <div className={styles.noteItemContent}>
+      <h3 className={styles.noteTitle}>
+        {note.title}
+        {hasUnsavedChanges && <span className={styles.unsavedDot}>●</span>}
+      </h3>
+      <p className={styles.notePreview}>
+        {note.content.substring(0, 60) + (note.content.length > 60 ? '...' : '')}
+      </p>
+      <div className={styles.noteFooter}>
+        <span className={styles.noteDate}>
+          {new Date(note.createdAt).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+          })}
+        </span>
+        {note.images.length > 0 && (
+          <span className={styles.imageCount}>
+            <Image size={12} /> {note.images.length}
+          </span>
+        )}
+      </div>
+    </div>
+    <button
+      className={styles.deleteButton}
+      onClick={(e) => {
+        e.stopPropagation();
+        onDelete(note._id);
+      }}
+    >
+      <Trash2 size={16} />
+    </button>
+  </div>
+));
 
 export default Notespage;

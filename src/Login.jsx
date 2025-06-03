@@ -7,9 +7,6 @@ import {
   UserPlus, 
   Check, 
   AlertTriangle,
-  Github,
-  Twitter,
-  Facebook,
   BookOpen,
   Calendar,
   CloudLightning
@@ -204,20 +201,7 @@ const Login = () => {
             </button>
           </form>
           
-          <div className={styles.divider}></div>
-          
-          <div className={styles.socialLogin}>
-            <button className={styles.socialButton}>
-              <Github size={20} />
-            </button>
-            <button className={styles.socialButton}>
-              <Twitter size={20} />
-            </button>
-            <button className={styles.socialButton}>
-              <Facebook size={20} />
-            </button>
-          </div>
-          
+      
           <div className={styles.switchMode}>
             {isLogin ? "Don't have an account?" : "Already have an account?"}
             <a href="#" className={styles.switchModeLink} onClick={toggleAuthMode}>

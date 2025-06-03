@@ -862,3 +862,31 @@ body {
     height: 32px;
   }
 }
+/* Add these styles to your App.module.css */
+
+.editorHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.unsavedIndicator {
+  color: #ff6b6b;
+  font-size: 20px;
+  font-weight: bold;
+  animation: pulse 2s infinite;
+}
+
+.unsavedDot {
+  color: #ff6b6b;
+  font-size: 16px;
+  margin-left: 4px;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.5; }
+  100% { opacity: 1; }
+}
