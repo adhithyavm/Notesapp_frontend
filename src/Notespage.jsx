@@ -168,7 +168,7 @@ function Notespage() {
   const fetchNotes = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
-      if (!token) return navigate('/login');
+      if (!token) return navigate('/');
 
       const response = await axios.get('https://notesapp-backend-ljac.onrender.com/api/notes', {
         headers: { Authorization: `Bearer ${token}` },
@@ -179,7 +179,7 @@ function Notespage() {
       setError(err.response?.data?.error || 'Failed to fetch notes');
       if (err.response?.status === 401) {
         localStorage.removeItem('token');
-        navigate('/login');
+        navigate('/');
       }
     }
   }, [navigate]);
@@ -187,7 +187,7 @@ function Notespage() {
   const addNote = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
-      if (!token) return navigate('/login');
+      if (!token) return navigate('/');
 
       const newNote = {
         title: 'Untitled Note',
@@ -210,7 +210,7 @@ function Notespage() {
   const deleteNote = useCallback(async (id) => {
     try {
       const token = localStorage.getItem('token');
-      if (!token) return navigate('/login');
+      if (!token) return navigate('/');
 
       await axios.delete(`https://notesapp-backend-ljac.onrender.com/api/notes/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -233,7 +233,7 @@ function Notespage() {
   const updateNote = useCallback(async (id, updates) => {
     try {
       const token = localStorage.getItem('token');
-      if (!token) return navigate('/login');
+      if (!token) return navigate('/');
 
       const response = await axios.put(`https://notesapp-backend-ljac.onrender.com/api/notes/${id}`, updates, {
         headers: { Authorization: `Bearer ${token}` },
@@ -265,7 +265,7 @@ function Notespage() {
       if (file) {
         try {
           const token = localStorage.getItem('token');
-          if (!token) return navigate('/login');
+          if (!token) return navigate('/');
 
           const formData = new FormData();
           formData.append('image', file);
@@ -295,7 +295,7 @@ function Notespage() {
     try {
       const token = localStorage.getItem('token');
       if (!token) {
-        navigate('/login');
+        navigate('/');
         return;
       }
 
@@ -325,7 +325,7 @@ function Notespage() {
       try {
         const token = localStorage.getItem('token');
         if (!token) {
-          navigate('/login');
+          navigate('/');
           return;
         }
         const response = await axios.get(`https://notesapp-backend-ljac.onrender.com/api/notes/${noteId}`, {
