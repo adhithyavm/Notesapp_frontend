@@ -82,7 +82,7 @@ function Notespage() {
       const token = localStorage.getItem('token');
       if (!token) return navigate('/login');
 
-      const response = await axios.get('http://localhost:5000/api/notes', {
+      const response = await axios.get('https://notesapp-backend-ljac.onrender.com/api/notes', {
         headers: { Authorization: `Bearer ${token}` },
       });
       setNotes(response.data);
@@ -107,7 +107,7 @@ function Notespage() {
         color: getRandomColor(),
       };
 
-      const response = await axios.post('http://localhost:5000/api/notes', newNote, {
+      const response = await axios.post('https://notesapp-backend-ljac.onrender.com/api/notes', newNote, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -124,7 +124,7 @@ function Notespage() {
       const token = localStorage.getItem('token');
       if (!token) return navigate('/login');
 
-      await axios.delete(`http://localhost:5000/api/notes/${id}`, {
+      await axios.delete(`https://notesapp-backend-ljac.onrender.com/api/notes/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -141,7 +141,7 @@ function Notespage() {
       const token = localStorage.getItem('token');
       if (!token) return navigate('/login');
 
-      const response = await axios.put(`http://localhost:5000/api/notes/${id}`, updates, {
+      const response = await axios.put(`https://notesapp-backend-ljac.onrender.com/api/notes/${id}`, updates, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -167,7 +167,7 @@ function Notespage() {
           const formData = new FormData();
           formData.append('image', file);
 
-          const response = await axios.post(`http://localhost:5000/api/notes/${id}/images`, formData, {
+          const response = await axios.post(`https://notesapp-backend-ljac.onrender.com/api/notes/${id}/images`, formData, {
             headers: {
               Authorization: `Bearer ${token}`,
               'Content-Type': 'multipart/form-data',
@@ -208,7 +208,7 @@ function Notespage() {
         return note;
       }));
 
-      const response = await axios.delete(`http://localhost:5000/api/notes/${noteId}/images/${encodeURIComponent(publicId)}`, {
+      const response = await axios.delete(`https://notesapp-backend-ljac.onrender.com/api/notes/${noteId}/images/${encodeURIComponent(publicId)}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -229,7 +229,7 @@ function Notespage() {
           navigate('/login');
           return;
         }
-        const response = await axios.get(`http://localhost:5000/api/notes/${noteId}`, {
+        const response = await axios.get(`https://notesapp-backend-ljac.onrender.com/api/notes/${noteId}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         setNotes(prevNotes => prevNotes.map(note => (note._id === noteId ? response.data : note)));

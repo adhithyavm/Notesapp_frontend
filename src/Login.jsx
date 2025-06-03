@@ -41,8 +41,8 @@ const Login = () => {
 
     try {
       const url = isLogin 
-        ? 'http://localhost:5000/api/auth/login' 
-        : 'http://localhost:5000/api/auth/signup';
+        ? 'https://notesapp-backend-ljac.onrender.com/api/auth/login' 
+        : 'https://notesapp-backend-ljac.onrender.com/api/auth/signup';
       
       const payload = isLogin 
         ? { email: formData.email, password: formData.password }
